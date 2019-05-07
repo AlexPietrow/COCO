@@ -140,6 +140,7 @@ def coco_filters(wavelengths, filtername, pos_rgb, plot=0):
             c = 1./(std * np.sqrt(2*np.pi))
             
             num = np.arange(len(filter[:,0]))
+            num = wavelengths
             
             filter[:,i] =   (c*  np.e**(-0.5 * ( ( num - mn)/std )**2 ) )
 
@@ -157,7 +158,7 @@ def coco_filters(wavelengths, filtername, pos_rgb, plot=0):
     return filter
 
 
-def coco(datacube, filters, name):
+def coco(datacube, filters, name, threshold=0):
     '''
     Color Convolves a 3D cube with an RGB filter.
     INPUT:
@@ -190,6 +191,10 @@ def coco(datacube, filters, name):
     data_filtered = data_rgb * filter_rgb
     data_collapsed = np.sum(data_filtered, axis=0)
     #normalize to values between 0 and 255
+    if threshold:
+        data_collapsed[np.where(data_collapsed > threshold[1])] = threshold[1]
+        data_collapsed[np.where(data_collapsed < threshold[0])] = threshold[0]
+
     data_collapsed_norm = np.uint8(np.round(data_collapsed*255/np.max(data_collapsed)))
     image = img.fromarray(data_collapsed_norm)
     image.save(name)
