@@ -1,36 +1,16 @@
+name = "COCOpy"
+
 import numpy as np
 from PIL import Image as img
 import astropy.io.fits as f
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
-def cbarimg(Ticks=['Right Enhanced', 'Central Enhanded', 'Left Enhanced'], size=(0.5,6), show=0):
+def cocofilter(wavelengths, filtername, pos_rgb, plot=0):
     '''
-    Makes RGBR colorbar whith proper ticks.
+    Make filters for cocoplot
     INPUT:
-        Ticks   :   List of 3 values to describe what the 3 colors stand for.
-        size    :   Size of the bar in inch
-        show    :   Shows the colorbar. Default=0
-    '''
-    Ticks = np.append(Ticks, Ticks[0])
-    a = np.array([[0,1]])
-    plt.figure(figsize=size)
-    plt.imshow(a, cmap="hsv")
-    plt.gca().set_visible(False)
-    cax = plt.axes([0.1, 0.2, 0.8, 0.6])
-    cbar = plt.colorbar(cax=cax, ticks=[0,0.3,0.65,1] )
-    cbar.ax.set_yticklabels(Ticks)
-    plt.autoscale()
-    plt.savefig('cbar.png',bbox_inches='tight')
-    if show:
-        plt.show()
-    cbarimg = img.open('cbar.png')
-    return cbarimg
-
-def coco_filters(wavelengths, filtername, pos_rgb, plot=0):
-    '''
-    Make filters for spec_i
-    INPUT:
-        wavelengths     : Wavelength points
+        wavelengths     : a set of wavelengths or an np.arange() array if spacing is equidistant.
         filtername      : name of desired filter type. Chose from.
 
                         'single' :  single wavelength points
@@ -47,7 +27,7 @@ def coco_filters(wavelengths, filtername, pos_rgb, plot=0):
                                     note that the end wavelength is not included!
                                     e.g. [[2, 3], [3, 4], [6, 7]]
                                     
-                        'exp'    :  exponential filters, like the cones of the eye
+                        'normal'    :  exponential filters, like the cones of the eye
                                     uses keyword pos_rgb[r,g,b]
                                     specify which wavength points are wanted
                                     to start the bands with r,g,b
@@ -61,11 +41,11 @@ def coco_filters(wavelengths, filtername, pos_rgb, plot=0):
     OUTPUT:
         filter          : 3 channel cube with length (wavelengths, 3) with applied filter
         
-        Based on spec_i.pro:spec_i_filters by M. Druett, Python version by A.G.M. Pietrow
+        Based on coco.pro:COCOFILTERS by M. Druett, Python version by A.G.M. Pietrow
     
     EXAMPLE:
         wavelengths = np.arange(10)
-        spec_i_filters(wavelengths, 'band', [[2,4], [4,8], [9,9]])
+        cocofilter(wavelengths, 'band', [[2,4], [4,8], [9,9]])
         
         >>>array([  [ 0.  ,  0.  ,  0.  ],
                     [ 0.  ,  0.  ,  0.  ],
@@ -88,12 +68,6 @@ def coco_filters(wavelengths, filtername, pos_rgb, plot=0):
         filter[pos_rgb[0],0] = 1.
         filter[pos_rgb[1],1] = 1.
         filter[pos_rgb[2],2] = 1.
-        
-        if plot:
-            plt.plot(filter[:,0], color='r')
-            plt.plot(filter[:,1], color='g')
-            plt.plot(filter[:,2], color='b')
-            plt.show()
 
     elif filtername == 'band':
         if len(pos_rgb) <> 3:
@@ -111,21 +85,11 @@ def coco_filters(wavelengths, filtername, pos_rgb, plot=0):
                 raise ValueError("invalid range.")
             
             if pos_rgb[i][0] == pos_rgb[i][1]: #check if bin is broader than 1
-                filt_int = 1./(pos_rgb[i][1] - pos_rgb[i][0] + 1)
-                filter[pos_rgb[i][0], i] = filt_int
+                filter[pos_rgb[i][0], i] = 1./(pos_rgb[i][1] - pos_rgb[i][0] + 1)
             else:
-                filt_int = 1./(pos_rgb[i][1] - pos_rgb[i][0])
-                filter[pos_rgb[i][0]:pos_rgb[i][1], i] = filt_int
-
-
-        if plot:
-            plt.plot(filter[:,0], color='r')
-            plt.plot(filter[:,1], color='g')
-            plt.plot(filter[:,2], color='b')
-            plt.show()
-
+                filter[pos_rgb[i][0]:pos_rgb[i][1], i] = 1./(pos_rgb[i][1] - pos_rgb[i][0])
             
-    elif filtername == 'exp':
+    elif filtername == 'normal':
         if len(pos_rgb) <> 3:
             raise ValueError("pos_rgb should have 3 values!")
         try:
@@ -143,66 +107,192 @@ def coco_filters(wavelengths, filtername, pos_rgb, plot=0):
             num = wavelengths
             
             filter[:,i] =   (c*  np.e**(-0.5 * ( ( num - mn)/std )**2 ) )
-
-
-        if plot:
-            plt.plot(filter[:,0], color='r')
-            plt.plot(filter[:,1], color='g')
-            plt.plot(filter[:,2], color='b')
-            plt.show()
-
             
     else:
-        raise ValueError("filtername not recognised. Check help(filters) for available filter types.")
+        raise ValueError("filtername not recognised. Check help(cocofilter) for available filter types.")
+
+    if plot:
+        plt.plot(filter[:,0], color='r')
+        plt.plot(filter[:,1], color='g')
+        plt.plot(filter[:,2], color='b')
+        plt.show()
 
     return filter
 
 
-def coco(datacube, filters, name, threshold=0):
+def cocoRGB(datacube, filters, threshold=0, thresmethod='numeric'):
     '''
     Color Convolves a 3D cube with an RGB filter.
     INPUT:
-        datacube    : 3D cube of shape [x,y,lambda]
-        filters     :
-        name        : name of file
+        datacube    : 3D or 4D cube of shape [lambda,x,y] or [t,lambda,x,y]
+        filters     : output from cocofilters()
+        threshold   : 2 element array that saturates all values below and above the provided values.
+        thresmethod : set method of thesholding. Default: 'numeric'
+                      numeric  - allows to give a min and max value in counts
+                      fraction - give threshold value in fractional numbers between 0 and 1.
         
     OUTPUT:
-        image       : collapsed spec_i image
+        data_rgb    : 3d cube of size [x,y,3] to make images.
         
-    Based on spec_i.pro by M. Druett, Python version by A.G.M. Pietrow
+        Based on coco.pro:COCORGB by M. Druett, Python version by A.G.M. Pietrow
     '''
     #datacbe = 3d, numerical, filters have len n
-    if len(datacube.shape) <> 3:
-        raise ValueError("Array must be 3D")
+    if len(datacube.shape) < 3 or  len(datacube.shape) > 4:
+        raise ValueError("Array must be 3D or 4D")
     try:
         datacube.astype(float)
-
     except ValueError:
-        raise ValueError("Array must be numerical")
+        raise ValueError("Array must be float")
     ##filters correct len
 
+
     #apply filter to cube and collapse cube int x,y,RGB
-    nx,ny,nl = datacube.shape
-    filter_rgb = np.tile(filters, (ny,nx,1,1))
-    filter_rgb = np.swapaxes(filter_rgb, 0,2)
-    data_rgb = np.tile(datacube,(3,1,1,1))
-    data_rgb = np.swapaxes(data_rgb,0,-1)
-    #data_rgb = np.swapaxes(f_rgb,1,2)
-    data_filtered = data_rgb * filter_rgb
-    data_collapsed = np.sum(data_filtered, axis=0)
-    #normalize to values between 0 and 255
+    if len(datacube.shape) == 3:
+        data_collapsed = np.tensordot(datacube,filters,axes=(0,0))
+
+    if len(datacube.shape) == 4:
+        data_collapsed = np.tensordot(datacube,filters,axes=(1,0))
+
     if threshold:
-        data_collapsed[np.where(data_collapsed > threshold[1])] = threshold[1]
-        data_collapsed[np.where(data_collapsed < threshold[0])] = threshold[0]
+        try:
+            len(threshold) <> 2
+        except TypeError:
+            raise TypeError("threshold should be given as a 2 element list. e.g. [0,110]")
+        
+        if thresmethod == 'numeric':
+            data_collapsed[np.where(data_collapsed > threshold[1])] = threshold[1]
+            data_collapsed[np.where(data_collapsed < threshold[0])] = threshold[0]
+        elif thresmethod == 'fraction':
+            mx = np.max(data)
+            pmn = mx * threshold[0]
+            pmx = mx * threshold[1]
+            data_collapsed[np.where(data_collapsed > pmx)] = pmx
+            data_collapsed[np.where(data_collapsed < pmn)] = pmn
+        else:
+            raise ValueError("thresmethod not recognised. Should be 'numeric' or 'fraction'.")
+        if not data_collapsed:
+            raise TypeError("Array empty after thresholding!")
+    
+    return data_collapsed
 
-    data_collapsed_norm = np.uint8(np.round(data_collapsed*255/np.max(data_collapsed)))
-    image = img.fromarray(data_collapsed_norm)
-    image.save(name)
-    #image.show()
+def cocoplot(datacube, filter, threshold=0, thresmethod='numeric', show=True, name=False, path=''):
+    '''
+        Color Convolves a 3D cube with an RGB filter and normalizes.
+        
+        INPUT:
+        datacube    : 3D cube of shape [x,y,lambda]
+        filters     : output from cocofilters()
+        threshold   : 2 element array that saturates all values below and above the provided values.
+        thresmethod : set method of thesholding. Default: 'numeric'
+                      numeric  - allows to give a min and max value in counts
+                      fraction - give threshold value in fractional numbers between 0 and 1.
+        show        : Show resulting image. Default: True.
+        path        : path to save image. Default: ''
+        
+        OUTPUT:
+        data_rgb    : 3d cube of size [x,y,3] to make images.
+        
+        Based on coco.pro:COCOPLOT by M. Druett, Python version by A.G.M. Pietrow
+    
+    '''
+    data_float = cocoRGB(datacube, filter, threshold=threshold, thresmethod=thresmethod)
+    data_int   = np.uint8(np.round(data_float*255/np.max(data_float)))
+    
+    if show:
+        plt.imshow(data_int)
+    if name:
+        image = img.fromarray(data_int)
+        image.save(path+name)
 
-    return image, data_collapsed_norm
+    return data_int
 
-def coco_img(cocoimg, name, cbarimg):
+def cocovideo(datacube, filter, fps=3, threshold=0, thresmethod='numeric', name=False, path=''):
+    '''
+        Color Convolves a 4D cube with an RGB filter, normalizes and then makes a video.
+        
+        INPUT:
+        datacube    : 4D cube of shape [t,x,y,lambda]
+        filters     : output from cocofilters()
+        fps         : frames per second. Default:3
+        threshold   : 2 element array that saturates all values below and above the provided values.
+        thresmethod : set method of thesholding. Default: 'numeric'
+                      numeric  - allows to give a min and max value in counts
+                      fraction - give threshold value in fractional numbers between 0 and 1.
+        name        : Saves cocoplot to disk if name is set Default: False
+        path        : path to save image. Default: ''
+        
+        OUTPUT:
+        data_rgb    : 4d cube of size [t,x,y,3] to make videos.
+        
+        Based on CRISpy:animate_cube by A.G.M. Pietrow
+        
+    '''
+    shape = np.shape(datacube)
+    final_cube = cocoplot(datacube, filter, threshold=threshold, thresmethod=thresmethod, show=0)
+
+    fig = plt.figure()
+    img = plt.imshow(final_cube[0], animated=True)
+    img.axes.get_xaxis().set_visible(False)
+    img.axes.get_yaxis().set_visible(False)
+
+    interval = 1000./fps
+
+    def updatefig(i):
+        img.set_array(final_cube[i])
+        return img,
+
+    ani = animation.FuncAnimation(fig, updatefig, frames=final_cube.shape[0], interval=interval, blit=True)
+    plt.show()
+
+    if name:
+        ani.save(path+name, fps=fps)
+
+def flip3d(data):
+    '''
+    flips 3d cube of shape [L,x,y] to [x,y,L]
+    '''
+    data = np.swapaxes(np.swapaxes(data,0,-1), 0,1) #Make sure that it is x,y,L
+    return data
+
+def flip4d(data):
+    '''
+    flips 4d cube of shape [t,L,x,y] to [t,x,y,L]
+    '''
+    data = np.swapaxes(np.swapaxes(data,1,-1), 1,2) #Make sure that it is x,y,L
+    return data
+
+def cocopol(data):
+    '''
+        removes all NAN and negative values from dataset.
+        '''
+    data[np.isnan(data)] = 0
+    data = data - data.min()
+    return data
+
+def cbarimg(Ticks=['Right Enhanced', 'Central Enhanded', 'Left Enhanced'], size=(0.5,6), show=0):
+    '''
+        Makes RGBR colorbar whith proper ticks.
+        INPUT:
+        Ticks   :   List of 3 values to describe what the 3 colors stand for.
+        size    :   Size of the bar in inch
+        show    :   Shows the colorbar. Default=0
+        '''
+    Ticks = np.append(Ticks, Ticks[0])
+    a = np.array([[0,1]])
+    plt.figure(figsize=size)
+    plt.imshow(a, cmap="hsv")
+    plt.gca().set_visible(False)
+    cax = plt.axes([0.1, 0.2, 0.8, 0.6])
+    cbar = plt.colorbar(cax=cax, ticks=[0,0.3,0.65,1] )
+    cbar.ax.set_yticklabels(Ticks)
+    plt.autoscale()
+    plt.savefig('cbar.png',bbox_inches='tight')
+    if show:
+        plt.show()
+    cbarimg = img.open('cbar.png')
+    return cbarimg
+
+#def cocoimage(data_int, name, cbarimg):
     '''
     Makes a composite image of COCO and a colorbar.
     INPUT:
@@ -210,14 +300,13 @@ def coco_img(cocoimg, name, cbarimg):
         name    :   name under which file should be saved
         cbarimg :   PIL.Image of colorbar. Made with cbarimg()
     '''
-    imx, imy = cocoimg.size
-    cx, cy = cbarimg.size
-    bg = img.new('RGB', (imx+20+cx,imy), (255,255,255))
-    bg.paste(cocoimg)
-    bg.paste(cbarimg, (imx + 20, (imy-cy)/2))
-    bg.show()
-    bg.save(name)
-    plt.close()
-
+#    imx, imy = cocoimg.size
+#    cx, cy = cbarimg.size
+#    bg = img.new('RGB', (imx+20+cx,imy), (255,255,255))
+#    bg.paste(cocoimg)
+#    bg.paste(cbarimg, (imx + 20, (imy-cy)/2))
+#    bg.show()
+#    bg.save(name)
+#    plt.close()
 
 
