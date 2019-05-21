@@ -201,7 +201,7 @@ def cocoplot(datacube, filter, threshold=0, thresmethod='numeric', show=True, na
     if show:
         plt.imshow(data_int, origin='lower')
     if name:
-        image = img.fromarray(data_int)
+        image = img.fromarray(data_int).transpose(Image.FLIP_TOP_BOTTOM)
         image.save(path+name)
 
     return data_int
