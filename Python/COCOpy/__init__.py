@@ -163,7 +163,7 @@ def cocoRGB(datacube, filters, threshold=0, thresmethod='numeric'):
             data_collapsed[np.where(data_collapsed > threshold[1])] = threshold[1]
             data_collapsed[np.where(data_collapsed < threshold[0])] = threshold[0]
         elif thresmethod == 'fraction':
-            mx = np.max(data)
+            mx = np.max(datacube)
             pmn = mx * threshold[0]
             pmx = mx * threshold[1]
             data_collapsed[np.where(data_collapsed > pmx)] = pmx
@@ -180,7 +180,7 @@ def cocoplot(datacube, filter, threshold=0, thresmethod='numeric', show=True, na
         Color Convolves a 3D cube with an RGB filter and normalizes.
         
         INPUT:
-        datacube    : 3D cube of shape [x,y,lambda]
+        datacube    : 3D cube of shape [lambda,x,y]
         filters     : output from cocofilters()
         threshold   : 2 element array that saturates all values below and above the provided values.
         thresmethod : set method of thesholding. Default: 'numeric'
@@ -199,25 +199,26 @@ def cocoplot(datacube, filter, threshold=0, thresmethod='numeric', show=True, na
     data_int   = np.uint8(np.round(data_float*255/np.max(data_float)))
     
     if show:
-        plt.imshow(data_int)
+        plt.imshow(data_int, origin='lower')
     if name:
         image = img.fromarray(data_int)
         image.save(path+name)
 
     return data_int
 
-def cocovideo(datacube, filter, fps=3, threshold=0, thresmethod='numeric', name=False, path=''):
+def cocovideo(datacube, filter, fps=3, threshold=0, thresmethod='numeric', show=True, name=False, path=''):
     '''
         Color Convolves a 4D cube with an RGB filter, normalizes and then makes a video.
         
         INPUT:
-        datacube    : 4D cube of shape [t,x,y,lambda]
+        datacube    : 4D cube of shape [t,lambda,x,y]
         filters     : output from cocofilters()
         fps         : frames per second. Default:3
         threshold   : 2 element array that saturates all values below and above the provided values.
         thresmethod : set method of thesholding. Default: 'numeric'
                       numeric  - allows to give a min and max value in counts
                       fraction - give threshold value in fractional numbers between 0 and 1.
+        show        : Will show animation if True. Default: True
         name        : Saves cocoplot to disk if name is set Default: False
         path        : path to save image. Default: ''
         
@@ -227,22 +228,28 @@ def cocovideo(datacube, filter, fps=3, threshold=0, thresmethod='numeric', name=
         Based on CRISpy:animate_cube by A.G.M. Pietrow
         
     '''
+    if not show and not name:
+        raise ValueError("Save and show are both set to False, so this function does nothing.")
+    
     shape = np.shape(datacube)
     final_cube = cocoplot(datacube, filter, threshold=threshold, thresmethod=thresmethod, show=0)
+    
 
-    fig = plt.figure()
-    img = plt.imshow(final_cube[0], animated=True)
-    img.axes.get_xaxis().set_visible(False)
-    img.axes.get_yaxis().set_visible(False)
+    
+    if show:
+        fig = plt.figure()
+        img = plt.imshow(final_cube[0], animated=True, origin='lower')
+        img.axes.get_xaxis().set_visible(False)
+        img.axes.get_yaxis().set_visible(False)
 
-    interval = 1000./fps
+        interval = 1000./fps
 
-    def updatefig(i):
-        img.set_array(final_cube[i])
-        return img,
+        def updatefig(i):
+            img.set_array(final_cube[i])
+            return img,
 
-    ani = animation.FuncAnimation(fig, updatefig, frames=final_cube.shape[0], interval=interval, blit=True)
-    plt.show()
+        ani = animation.FuncAnimation(fig, updatefig, frames=final_cube.shape[0], interval=interval, blit=True)
+        plt.show()
 
     if name:
         ani.save(path+name, fps=fps)
