@@ -33,7 +33,7 @@ def cocofilter(wavelengths, filtername, pos_rgb, plot=0):
                                     to start the bands with r,g,b
                                     Give a two number list for each color
                                     to indicate the mean and std of each Gaussian.
-                                    e.g. [[2, 3], [5, 3], [11, 3]]
+                                    e.g. [[wavelength[index], std], [5, 3], [11, 3]]
                                     
         pos_rgb         : input list with desired filter locations.
         plot            : plots filters. Default = 0
@@ -120,7 +120,7 @@ def cocofilter(wavelengths, filtername, pos_rgb, plot=0):
     return filter
 
 
-def cocoRGB(datacube, filters, threshold=0, thresmethod='numeric'):
+def cocoRGB(datacube, filters, threshold=0, thresmethod='percentile'):
     '''
     Color Convolves a 3D cube with an RGB filter.
     INPUT:
@@ -130,6 +130,7 @@ def cocoRGB(datacube, filters, threshold=0, thresmethod='numeric'):
         thresmethod : set method of thesholding. Default: 'numeric'
                       numeric  - allows to give a min and max value in counts
                       fraction - give threshold value in fractional numbers between 0 and 1.
+                      percentile - give threshold value in percentiles between 0 and 100 inclusive.
         
     OUTPUT:
         data_rgb    : 3d cube of size [x,y,3] to make images.
@@ -164,13 +165,21 @@ def cocoRGB(datacube, filters, threshold=0, thresmethod='numeric'):
             data_collapsed[np.where(data_collapsed < threshold[0])] = threshold[0]
         elif thresmethod == 'fraction':
             mx = np.max(datacube)
-            pmn = mx * threshold[0]
-            pmx = mx * threshold[1]
-            data_collapsed[np.where(data_collapsed > pmx)] = pmx
-            data_collapsed[np.where(data_collapsed < pmn)] = pmn
+            mn = np.min(datacube)
+            pmn = mn + threshold[0] * (mx - mn)
+            pmx = mn + threshold[1] * (mx -mn)
+            data_collapsed[np.where(data_collapsed >= pmx)] = pmx
+            data_collapsed[np.where(data_collapsed <= pmn)] = pmn
+            data_collapsed -= pmn
+        elif thresmethod == 'percentile':
+            pmn = np.percentile(datacube,threshold[0])
+            pmx = np.percentile(datacube,threshold[1])
+            data_collapsed[np.where(data_collapsed >= pmx)] = pmx
+            data_collapsed[np.where(data_collapsed <= pmn)] = pmn
+            data_collapsed -= pmn
         else:
             raise ValueError("thresmethod not recognised. Should be 'numeric' or 'fraction'.")
-        if not data_collapsed:
+        if data_collapsed.size == 0:
             raise TypeError("Array empty after thresholding!")
     
     return data_collapsed
@@ -196,12 +205,13 @@ def cocoplot(datacube, filter, threshold=0, thresmethod='numeric', show=True, na
     
     '''
     data_float = cocoRGB(datacube, filter, threshold=threshold, thresmethod=thresmethod)
-    data_int   = np.uint8(np.round(data_float*255/np.max(data_float)))
+    data_int   = np.uint8(np.round(data_float*255./np.max(data_float)))
     
     if show:
         plt.imshow(data_int, origin='lower')
+        plt.show()
     if name:
-        image = img.fromarray(data_int).transpose(Image.FLIP_TOP_BOTTOM)
+        image = img.fromarray(data_int).transpose(img.FLIP_TOP_BOTTOM)
         image.save(path+name)
 
     return data_int
@@ -316,4 +326,39 @@ def cbarimg(Ticks=['Right Enhanced', 'Central Enhanded', 'Left Enhanced'], size=
 #    bg.save(name)
 #    plt.close()
 
+def plotfilt(line,filter,color=True, xlabel='Wavelengths', ylabel='Arbitrary Units', title=''):
+    '''
+    Convolve profile with filters to see result.
+    INPUT:
+        line:   1d profile
+        filter: filter from cocofilter
+        color:  If True the color of the profile will have the RGB value
+                that the filter would give it. Otherwise profile is black.
+                Defealt: True
+        xlabel: text on xlabel. Default: 'Wavelengths'
+        ylabel: text on ylabel. Default: 'Arbitrary Units'
+        title:  title of plot. Deleault: ''
+    
+    OUTPUT:
+        Image with filters, input profile and convolved results.
+    '''
+    RGB = np.sum(filter*line[:,np.newaxis],axis=0)
+    RGB = np.uint8(np.round(RGB*255/np.max(RGB)))
+    RGBn = RGB/255.
+    filter = filter/np.max(filter)
+    line = line/(np.max(line)*1.3)
 
+    plt.plot(filter[:,0],'--', c='red',alpha=0.5)
+    plt.plot(filter[:,1],'--', c='green',alpha=0.5)
+    plt.plot(filter[:,2],'--', c='blue',alpha=0.5)
+    plt.plot(line*filter[:,0], c='red')
+    plt.plot(line*filter[:,1], c='green')
+    plt.plot(line*filter[:,2], c='blue')
+    if color:
+        plt.plot(np.arange(21),line,c=RGBn,marker='o')
+    else:
+        plt.plot(np.arange(21),line,c='black',marker='o')
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.show()
