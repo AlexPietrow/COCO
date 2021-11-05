@@ -4,7 +4,7 @@ COlor COllapsed PLOTting quick-look and context image software is designed to co
 **NOTE:** This is an early, not fully complete release of the code. Please keep this in mind when using it.
 
 ## INSTALL
-Install simply by running 'pip COCOPLOT3' for Python3 and 'pip COCOPLOTs' for python2
+Install simply by running 'pip COCOPLOTS3' for Python3 and 'pip COCOPLOTs' for python2
 
 ## IDL
 An IDK version of this script is available [here](https://github.com/mdruett/COCOPLOT)
